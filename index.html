@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a id="top"></a>
+
+<!-- Профиль: фото слева, данные справа -->
+<section id="profile">
+    <div class="profile-content">
+        <img src="{{ url_for('static', filename='photo.jpg') }}" alt="Фото">
+        <div class="profile-info">
+            <h1>Чурин Никита</h1>
+            <ul class="profile-list">
+                <li>Закончил Лицей №32 г. Вологда</li>
+                <li>Студент 2 курса ПИ Математико-Механического факультета СПБГУ</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- Образование -->
+<section id="education">
+    <h2>Языки программирования, которыми я владею</h2>
+    <div class="languages-grid">
+        <div class="language-card">
+            <img src="{{ url_for('static', filename='python.png') }}" alt="Python" class="lang-logo">
+            <div class="lang-name">Python</div>
+        </div>
+        <div class="language-card">
+            <img src="{{ url_for('static', filename='kotlinlang.png') }}" alt="Kotlin" class="lang-logo">
+            <div class="lang-name">Kotlin</div>
+        </div>
+        <div class="language-card">
+            <img src="{{ url_for('static', filename='clang.jpg') }}" alt="C" class="lang-logo">
+            <div class="lang-name">C</div>
+        </div>
+        <div class="language-card">
+            <img src="{{ url_for('static', filename='cplus.png') }}" alt="C++" class="lang-logo">
+            <div class="lang-name">C++</div>
+        </div>
+    </div>
+</section>
+
+<!-- Мои работы -->
+<section id="projects">
+    <h2>Мои работы</h2>
+    <div class="achievements-grid">
+        <!-- Tree Application -->
+        <div class="achievement-card">
+            <h3>Tree Application</h3>
+            <p>Библиотека на Kotlin, реализующая древовидные структуры данных:</p>
+            <div class="tech-tags">
+                <span class="tech-tag">Kotlin</span>
+                <span class="tech-tag">Gradle</span>
+            </div>
+            <a href="https://github.com/spbu-coding-2024/trees-trees-team-14" target="_blank" class="github-link">
+                <img src="https://cdn-icons-png.flaticon.com/512/733/733553.png" alt="GitHub">
+                <span>GitHub</span>
+            </a>
+        </div>
+
+        <!-- Graph Application -->
+        <div class="achievement-card">
+            <h3>Graph Application</h3>
+            <p>Библиотека на Kotlin, реализующая алгоритмы для работы с графами:</p>
+            <div class="tech-tags">
+                <span class="tech-tag">Kotlin</span>
+                <span class="tech-tag">Gradle</span>
+                <span class="tech-tag">Jetpack Compose</span>
+            </div>
+            <a href="https://github.com/spbu-coding-2024/graphs-team-3" target="_blank" class="github-link">
+                <img src="https://cdn-icons-png.flaticon.com/512/733/733553.png" alt="GitHub">
+                <span>GitHub</span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Комментарии -->
+<section id="comments">
+    <h2>Комментарии</h2>
+
+    <form method="POST" action="/comment">
+        {% if current_user.is_authenticated %}
+        <textarea name="text" rows="3" placeholder="Напишите ваш комментарий..."></textarea>
+        <button type="submit">Отправить</button>
+        {% else %}
+        <p><em>Только авторизованные пользователи могут оставлять комментарии.</em></p>
+        {% endif %}
+    </form>
+
+    {% if comments %}
+    <div class="comments-list">
+        {% for comment in comments %}
+        <div class="comment">
+            <div class="comment-avatar">{{ comment.user.name|first|upper }}</div>
+            <div class="comment-content">
+                <div class="comment-author">{{ comment.user.name }}</div>
+                <div class="comment-date">{{ comment.timestamp.strftime('%d.%m.%Y %H:%M') }}</div>
+                <div class="comment-text">{{ comment.text }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-comments">Пока нет комментариев.</p>
+    {% endif %}
+</section>
+
+{% endblock %}
