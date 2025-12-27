@@ -132,7 +132,6 @@ def logout():
 
 # === Запуск приложения для Timeweb Cloud ===
 if __name__ == '__main__':
-    # Timeweb использует gunicorn, но при локальном запуске можно использовать Flask
     import os
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=False)
