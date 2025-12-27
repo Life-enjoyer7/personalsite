@@ -1,23 +1,44 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 from authlib.integrations.flask_client import OAuth
 from datetime import datetime
-import os
 
-app = Flask(__name__, template_folder='.', static_folder='.')
+# === ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (.env) ===
+from dotenv import load_dotenv
+load_dotenv()
 
-# Генерация случайного ключа для продакшена
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+app = Flask(__name__, template_folder='.')
 
-# === Database ===
+# === НАСТРОЙКА SECRET KEY ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
+secret_key = os.environ.get('SECRET_KEY')
+if not secret_key:
+    print("⚠️ ВНИМАНИЕ: SECRET_KEY не найден в переменных окружения!")
+    secret_key = 'dev-fallback-key-change-in-production'
+
+app.secret_key = secret_key
+
+# === НАСТРОЙКА БАЗЫ ДАННЫХ ===
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'site.db')}"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Автоматическое определение окружения
+if os.environ.get('DATABASE_URL'):
+    # На Render - PostgreSQL
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+    print("✅ Использую PostgreSQL базу данных (Render)")
+else:
+    # Локально - SQLite
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'site.db')}"
+    print(f"✅ Использую SQLite базу данных: site.db")
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# === Flask-Login ===
+# === FLASK-LOGIN ===
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -25,32 +46,38 @@ login_manager.init_app(app)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# === OAuth ===
+# === OAuth (ключи из переменных окружения) ===
 oauth = OAuth(app)
 
-# GitHub
+# GitHub OAuth
+github_client_id = os.environ.get('GITHUB_CLIENT_ID')
+github_client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
+
 oauth.register(
     name='github',
-    client_id='Ov23liHby6GJPj6xCBtq',
-    client_secret='d1738a5c699b5ee3e237ee7b39858990d04a1ed6',
+    client_id=github_client_id if github_client_id else 'not-set',
+    client_secret=github_client_secret if github_client_secret else 'not-set',
     access_token_url='https://github.com/login/oauth/access_token',
     authorize_url='https://github.com/login/oauth/authorize',
     api_base_url='https://api.github.com/',
     client_kwargs={'scope': 'user:email'},
 )
 
-# Yandex
+# Yandex OAuth
+yandex_client_id = os.environ.get('YANDEX_CLIENT_ID')
+yandex_client_secret = os.environ.get('YANDEX_CLIENT_SECRET')
+
 oauth.register(
     name='yandex',
-    client_id='9440e2e762ef4cac9c9f3fa01091f5bc',
-    client_secret='ac3e2050200a472d910e22c962d4c849',
+    client_id=yandex_client_id if yandex_client_id else 'not-set',
+    client_secret=yandex_client_secret if yandex_client_secret else 'not-set',
     access_token_url='https://oauth.yandex.ru/token',
     authorize_url='https://oauth.yandex.ru/authorize',
     api_base_url='https://login.yandex.ru/info/',
     client_kwargs={'scope': 'login:email'},
 )
 
-# === Models ===
+# === МОДЕЛИ БАЗЫ ДАННЫХ ===
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     provider = db.Column(db.String(20), nullable=False)
@@ -65,7 +92,12 @@ class Comment(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref=db.backref('comments', lazy=True))
 
-# === Routes ===
+# Создание таблиц при запуске
+with app.app_context():
+    db.create_all()
+    print("✅ Таблицы базы данных созданы/проверены")
+
+# === МАРШРУТЫ (ROUTES) ===
 @app.route('/')
 def index():
     comments = Comment.query.order_by(Comment.timestamp.desc()).all()
@@ -74,17 +106,40 @@ def index():
 @app.route('/login/<provider>')
 def login(provider):
     if provider not in ['github', 'yandex']:
-        return "Unsupported provider", 400
-    redirect_uri = url_for('auth', provider=provider, _external=True)
-    return oauth.create_client(provider).authorize_redirect(redirect_uri)
+        return "Неподдерживаемый провайдер", 400
+    
+    # Динамическое определение redirect_uri
+    if os.environ.get('RENDER'):
+        # На Render (продакшен)
+        hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
+        if not hostname:
+            return "Ошибка конфигурации: не найден hostname", 500
+        redirect_uri = f"https://{hostname}/auth/{provider}"
+        print(f"🌐 Продакшен redirect_uri: {redirect_uri}")
+    else:
+        # Локальная разработка
+        redirect_uri = url_for('auth', provider=provider, _external=True)
+        print(f"💻 Локальный redirect_uri: {redirect_uri}")
+    
+    client = oauth.create_client(provider)
+    if not client:
+        return f"OAuth клиент {provider} не настроен", 400
+        
+    return client.authorize_redirect(redirect_uri)
 
 @app.route('/auth/<provider>')
 def auth(provider):
     if provider not in ['github', 'yandex']:
-        return "Unsupported provider", 400
+        return "Неподдерживаемый провайдер", 400
 
     client = oauth.create_client(provider)
-    token = client.authorize_access_token()
+    if not client:
+        return f"OAuth клиент {provider} не настроен", 400
+
+    try:
+        token = client.authorize_access_token()
+    except Exception as e:
+        return f"Ошибка OAuth авторизации: {str(e)}", 400
 
     if provider == 'github':
         resp = client.get('user').json()
@@ -92,11 +147,12 @@ def auth(provider):
         name = resp.get('name') or resp['login']
         email = resp.get('email')
     elif provider == 'yandex':
-        resp = client.get('').json()
+        resp = client.get('', params={'format': 'json'}).json()
         provider_user_id = str(resp['id'])
         name = resp.get('display_name') or resp['login']
         email = resp.get('default_email')
 
+    # Поиск или создание пользователя
     user = User.query.filter_by(provider=provider, provider_user_id=provider_user_id).first()
     if not user:
         user = User(
@@ -106,7 +162,11 @@ def auth(provider):
             email=email
         )
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return f"Ошибка базы данных: {str(e)}", 500
 
     login_user(user)
     return redirect(url_for('index'))
@@ -115,24 +175,44 @@ def auth(provider):
 def add_comment():
     if not current_user.is_authenticated:
         return redirect(url_for('index'))
+    
     text = request.form.get('text')
     if text and text.strip():
         comment = Comment(text=text.strip(), user_id=current_user.id)
         db.session.add(comment)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return f"Ошибка сохранения комментария: {str(e)}", 500
+    
     return redirect(url_for('index'))
+
+@app.route('/test')
+def test():
+    return "✅ Flask приложение работает! Версия 1.0"
+
+@app.route('/test-photo')
+def test_photo():
+    url = url_for('static', filename='photo.jpg')
+    return f'''
+    <h1>Тест статических файлов</h1>
+    <img src="{url}" style="width:300px; border-radius:10px;">
+    <p>URL фото: {url}</p>
+    <p>Все работает!</p>
+    '''
 
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# === Запуск приложения для Timeweb Cloud ===
+# === ЗАПУСК ПРИЛОЖЕНИЯ ===
 if __name__ == '__main__':
-    # Создаём БД только если её нет
-    import os
-    if not os.path.exists('site.db'):
-        with app.app_context():
-            db.create_all()
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    
+    print(f"🚀 Запуск Flask приложения на порту {port}")
+    print(f"🔧 Режим отладки: {'ВКЛ' if debug_mode else 'ВЫКЛ'}")
+    
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
