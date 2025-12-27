@@ -3,14 +3,10 @@ Werkzeug==2.1.2
 Jinja2==3.1.2
 itsdangerous==2.1.2
 click==8.1.3
-
-# База данных
 Flask-SQLAlchemy==2.5.1
 SQLAlchemy==1.4.46
-
-# Аутентификация
 Flask-Login==0.6.2
 Authlib==1.2.0
-
-# Сервер
 gunicorn==20.1.0
+python-dotenv==1.0.0
+requests==2.31.0  
