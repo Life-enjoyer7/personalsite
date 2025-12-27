@@ -130,8 +130,3 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# === Запуск приложения для Timeweb Cloud ===
-if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=False)
