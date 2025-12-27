@@ -65,9 +65,6 @@ class Comment(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref=db.backref('comments', lazy=True))
 
-with app.app_context():
-    db.create_all()
-
 # === Routes ===
 @app.route('/')
 def index():
@@ -130,3 +127,12 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
+# === Запуск приложения для Timeweb Cloud ===
+if __name__ == '__main__':
+    # Создаём БД только если её нет
+    import os
+    if not os.path.exists('site.db'):
+        with app.app_context():
+            db.create_all()
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port, debug=False)
