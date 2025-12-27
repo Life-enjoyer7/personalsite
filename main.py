@@ -5,8 +5,10 @@ from authlib.integrations.flask_client import OAuth
 from datetime import datetime
 import os
 
-app = Flask(__name__, template_folder='.')
-app.secret_key = 'your-secret-key-change-in-production'
+app = Flask(__name__, template_folder='.', static_folder='.')
+
+# Генерация случайного ключа для продакшена
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 
 # === Database ===
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -40,8 +42,8 @@ oauth.register(
 # Yandex
 oauth.register(
     name='yandex',
-    client_id='ad9c7c8bb7c142cda7ee9d7be8ea86eb',
-    client_secret='666be5424b534005a545287d0539d3ce',
+    client_id='9440e2e762ef4cac9c9f3fa01091f5bc',
+    client_secret='ac3e2050200a472d910e22c962d4c849',
     access_token_url='https://oauth.yandex.ru/token',
     authorize_url='https://oauth.yandex.ru/authorize',
     api_base_url='https://login.yandex.ru/info/',
@@ -93,7 +95,7 @@ def auth(provider):
         name = resp.get('name') or resp['login']
         email = resp.get('email')
     elif provider == 'yandex':
-        resp = client.get('', params={'format': 'json'}).json()
+        resp = client.get('').json()
         provider_user_id = str(resp['id'])
         name = resp.get('display_name') or resp['login']
         email = resp.get('default_email')
@@ -123,17 +125,14 @@ def add_comment():
         db.session.commit()
     return redirect(url_for('index'))
 
-@app.route('/test-photo')
-def test_photo():
-    url = url_for('static', filename='photo.jpg')
-    return f'<img src="{url}" style="width:200px;"> <p>URL: {url}</p>'
-
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
+# === Запуск приложения для Timeweb Cloud ===
 if __name__ == '__main__':
+    # Timeweb использует gunicorn, но при локальном запуске можно использовать Flask
     import os
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=False)
