@@ -7,6 +7,6 @@ Flask-SQLAlchemy==2.5.1
 SQLAlchemy==1.4.46
 Flask-Login==0.6.2
 Authlib==1.2.0
-gunicorn==20.1.0
+gunicorn==25.1.0
 python-dotenv==1.0.0
 requests==2.31.0  
