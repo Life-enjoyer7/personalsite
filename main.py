@@ -4,12 +4,16 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 from authlib.integrations.flask_client import OAuth
 from datetime import datetime
+from werkzeug.middleware.proxy_fix import ProxyFix  # ← важно для TimeWeb
 
 # === ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (.env) ===
 from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__, template_folder='.')
+
+# === ДОВЕРЯТЬ ЗАГОЛОВКАМ ОТ ПРОКСИ (TimeWeb использует nginx) ===
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # === НАСТРОЙКА SECRET KEY ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
 secret_key = os.environ.get('SECRET_KEY')
@@ -22,22 +26,12 @@ app.secret_key = secret_key
 # === НАСТРОЙКА БАЗЫ ДАННЫХ ===
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-# Автоматическое определение окружения
-if os.environ.get('DATABASE_URL'):
-    # На Render - PostgreSQL
-    db_url = os.environ.get('DATABASE_URL')
-    if db_url.startswith('postgres://'):
-        db_url = db_url.replace('postgres://', 'postgresql://', 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    print("✅ Использую PostgreSQL базу данных (Render)")
-else:
-    # Локально - SQLite
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'site.db')}"
-    print(f"✅ Использую SQLite базу данных: site.db")
-
+# На TimeWeb вы можете использовать либо SQLite (если разрешено), либо внешнюю БД
+# Здесь предполагается, что вы используете SQLite (site.db в корне)
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'site.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# === ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ (НОВЫЙ СПОСОБ ДЛЯ Flask-SQLAlchemy 3.x) ===
+# === ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ===
 db = SQLAlchemy()
 db.init_app(app)
 
@@ -52,28 +46,28 @@ def load_user(user_id):
 # === OAuth (ключи из переменных окружения) ===
 oauth = OAuth(app)
 
-# GitHub OAuth
+# GitHub OAuth — УБРАНЫ ЛИШНИЕ ПРОБЕЛЫ!
 github_client_id = os.environ.get('GITHUB_CLIENT_ID')
 github_client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
 
 oauth.register(
     name='github',
-    client_id=github_client_id if github_client_id else 'not-set',
-    client_secret=github_client_secret if github_client_secret else 'not-set',
+    client_id=github_client_id or 'not-set',
+    client_secret=github_client_secret or 'not-set',
     access_token_url='https://github.com/login/oauth/access_token',
     authorize_url='https://github.com/login/oauth/authorize',
     api_base_url='https://api.github.com/',
     client_kwargs={'scope': 'user:email'},
 )
 
-# Yandex OAuth
+# Yandex OAuth — УБРАНЫ ЛИШНИЕ ПРОБЕЛЫ!
 yandex_client_id = os.environ.get('YANDEX_CLIENT_ID')
 yandex_client_secret = os.environ.get('YANDEX_CLIENT_SECRET')
 
 oauth.register(
     name='yandex',
-    client_id=yandex_client_id if yandex_client_id else 'not-set',
-    client_secret=yandex_client_secret if yandex_client_secret else 'not-set',
+    client_id=yandex_client_id or 'not-set',
+    client_secret=yandex_client_secret or 'not-set',
     access_token_url='https://oauth.yandex.ru/token',
     authorize_url='https://oauth.yandex.ru/authorize',
     api_base_url='https://login.yandex.ru/info/',
@@ -100,7 +94,7 @@ with app.app_context():
     db.create_all()
     print("✅ Таблицы базы данных созданы/проверены")
 
-# === МАРШРУТЫ (ROUTES) ===
+# === МАРШРУТЫ ===
 @app.route('/')
 def index():
     comments = Comment.query.order_by(Comment.timestamp.desc()).all()
@@ -110,24 +104,15 @@ def index():
 def login(provider):
     if provider not in ['github', 'yandex']:
         return "Неподдерживаемый провайдер", 400
-    
-    # Динамическое определение redirect_uri
-    if os.environ.get('RENDER'):
-        # На Render (продакшен)
-        hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
-        if not hostname:
-            return "Ошибка конфигурации: не найден hostname", 500
-        redirect_uri = f"https://{hostname}/auth/{provider}"
-        print(f"🌐 Продакшен redirect_uri: {redirect_uri}")
-    else:
-        # Локальная разработка
-        redirect_uri = url_for('auth', provider=provider, _external=True)
-        print(f"💻 Локальный redirect_uri: {redirect_uri}")
-    
+
+    # Явно указываем redirect_uri для продакшена на churinnick.ru
+    redirect_uri = f"https://churinnick.ru/auth/{provider}"
+    print(f"🔧 Используем redirect_uri: {redirect_uri}")
+
     client = oauth.create_client(provider)
     if not client:
         return f"OAuth клиент {provider} не настроен", 400
-        
+
     return client.authorize_redirect(redirect_uri)
 
 @app.route('/auth/<provider>')
@@ -150,6 +135,7 @@ def auth(provider):
         name = resp.get('name') or resp['login']
         email = resp.get('email')
     elif provider == 'yandex':
+        # Яндекс требует ?format=json
         resp = client.get('', params={'format': 'json'}).json()
         provider_user_id = str(resp['id'])
         name = resp.get('display_name') or resp['login']
@@ -210,18 +196,16 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# === ДИАГНОСТИЧЕСКИЙ МАРШРУТ ===
 @app.route('/debug-env')
 def debug_env():
     import sys
     return {
-        'port_env': os.environ.get('PORT', 'not set'),
-        'database_url': 'set' if os.environ.get('DATABASE_URL') else 'not set',
-        'python_version': sys.version,
         'cwd': os.getcwd(),
         'files': os.listdir('.'),
-        'app_name': 'app',
-        'sqlalchemy_version': SQLAlchemy.__version__ if hasattr(SQLAlchemy, '__version__') else 'unknown'
+        'secret_key_set': bool(os.environ.get('SECRET_KEY')),
+        'github_id_set': bool(os.environ.get('GITHUB_CLIENT_ID')),
+        'yandex_id_set': bool(os.environ.get('YANDEX_CLIENT_ID')),
+        'python_version': sys.version,
     }
 
 @app.route('/health')
