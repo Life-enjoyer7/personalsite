@@ -70,9 +70,7 @@ oauth.register(
     access_token_url='https://oauth.yandex.ru/token',
     authorize_url='https://oauth.yandex.ru/authorize',
     api_base_url='https://login.yandex.ru/info/',
-    client_kwargs={
-        'scope': 'login:info login:email',  # ← Яндекс требует явное указание
-    },
+    client_kwargs={'scope': 'login:info login:email'},
 )
 
 # === МОДЕЛИ ===
