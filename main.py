@@ -36,7 +36,10 @@ else:
     print(f"✅ Использую SQLite базу данных: site.db")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+
+# === ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ (НОВЫЙ СПОСОБ ДЛЯ Flask-SQLAlchemy 3.x) ===
+db = SQLAlchemy()
+db.init_app(app)
 
 # === FLASK-LOGIN ===
 login_manager = LoginManager()
@@ -206,6 +209,24 @@ def test_photo():
 def logout():
     logout_user()
     return redirect(url_for('index'))
+
+# === ДИАГНОСТИЧЕСКИЙ МАРШРУТ ===
+@app.route('/debug-env')
+def debug_env():
+    import sys
+    return {
+        'port_env': os.environ.get('PORT', 'not set'),
+        'database_url': 'set' if os.environ.get('DATABASE_URL') else 'not set',
+        'python_version': sys.version,
+        'cwd': os.getcwd(),
+        'files': os.listdir('.'),
+        'app_name': 'app',
+        'sqlalchemy_version': SQLAlchemy.__version__ if hasattr(SQLAlchemy, '__version__') else 'unknown'
+    }
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 # === ЗАПУСК ПРИЛОЖЕНИЯ ===
 if __name__ == '__main__':
