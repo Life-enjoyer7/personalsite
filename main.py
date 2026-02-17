@@ -6,32 +6,32 @@ from authlib.integrations.flask_client import OAuth
 from datetime import datetime
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-# === ЗАГРУЗКА .env ===
+
 from dotenv import load_dotenv
 load_dotenv()
 
-# === ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ===
+
 app = Flask(__name__, template_folder='.')
 
-# ProxyFix ДОЛЖЕН БЫТЬ ПЕРВЫМ — для корректного определения https и хоста
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# === СЕКРЕТНЫЙ КЛЮЧ ===
+
 secret_key = os.environ.get('SECRET_KEY')
 if not secret_key:
-    raise RuntimeError("❌ SECRET_KEY не задан! Обязателен для сессий.")
+    raise RuntimeError("SECRET_KEY не задан! Обязателен для сессий.")
 
 app.secret_key = secret_key
 
-# === НАСТРОЙКИ СЕССИЙ ДЛЯ HTTPS (обязательно на TimeWeb) ===
+
 app.config.update(
-    SESSION_COOKIE_SECURE=True,      # Только по HTTPS
-    SESSION_COOKIE_HTTPONLY=True,    # Недоступен из JS
-    SESSION_COOKIE_SAMESITE='Lax',   # Защита от CSRF
-    PREFERRED_URL_SCHEME='https'     # Гарантирует https в url_for
+    SESSION_COOKIE_SECURE=True,      
+    SESSION_COOKIE_HTTPONLY=True,    
+    SESSION_COOKIE_SAMESITE='Lax',   
+    PREFERRED_URL_SCHEME='https'     
 )
 
-# === БАЗА ДАННЫХ (SQLite) ===
+
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'site.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -39,7 +39,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy()
 db.init_app(app)
 
-# === FLASK-LOGIN ===
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'index'
@@ -48,10 +48,10 @@ login_manager.login_view = 'index'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# === OAUTH ===
+
 oauth = OAuth(app)
 
-# GitHub — работает, оставляем как есть
+
 oauth.register(
     name='github',
     client_id=os.environ.get('GITHUB_CLIENT_ID') or 'not-set',
@@ -62,7 +62,7 @@ oauth.register(
     client_kwargs={'scope': 'user:email'},
 )
 
-# Yandex — ИСПРАВЛЕНО: без пробелов, корректный scope
+
 oauth.register(
     name='yandex',
     client_id=os.environ.get('YANDEX_CLIENT_ID') or 'not-set',
@@ -73,7 +73,7 @@ oauth.register(
     client_kwargs={'scope': 'login:info login:email'},
 )
 
-# === МОДЕЛИ ===
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     provider = db.Column(db.String(20), nullable=False)
@@ -91,7 +91,7 @@ class Comment(db.Model):
 with app.app_context():
     db.create_all()
 
-# === МАРШРУТЫ ===
+
 @app.route('/')
 def index():
     comments = Comment.query.order_by(Comment.timestamp.desc()).all()
@@ -102,7 +102,7 @@ def login(provider):
     if provider not in ['github', 'yandex']:
         return "Неподдерживаемый провайдер", 400
 
-    # Явно фиксируем redirect_uri для churinnick.ru
+    
     redirect_uri = f"https://churinnick.ru/auth/{provider}"
     print(f"[DEBUG] Redirect URI: {redirect_uri}")
 
@@ -124,7 +124,7 @@ def auth(provider):
     try:
         token = client.authorize_access_token()
     except Exception as e:
-        # Логируем ошибку для диагностики
+        
         print(f"[ERROR] OAuth error for {provider}: {repr(e)}")
         return f"Ошибка авторизации: {str(e)}", 400
 
